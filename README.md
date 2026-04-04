@@ -590,6 +590,47 @@ No database connection is made. The action operates entirely on the SQL text in 
 
 ---
 
+## Versioning
+
+This action uses [release-please](https://github.com/googleapis/release-please) for automated versioning driven by [Conventional Commits](https://www.conventionalcommits.org/).
+
+### How releases work
+
+1. Merge commits to `main` using conventional commit prefixes (`feat:`, `fix:`, `docs:`, etc.)
+2. release-please automatically opens a "Release PR" that bumps `version.txt`, `CHANGELOG.md`, and the manifest
+3. Merging the Release PR creates a GitHub Release and moves three tags:
+   - `vX.Y.Z` — the exact version (immutable)
+   - `vX` — major version pointer (e.g. `v1`), updated on every `v1.x.x` release
+   - `latest` — always points to the most recent release
+
+### Commit prefix → version bump
+
+| Prefix                         | Example                                    | Bump                      |
+| ------------------------------ | ------------------------------------------ | ------------------------- |
+| `fix:`                         | `fix: handle schema-qualified table names` | patch (`0.1.0` → `0.1.1`) |
+| `feat:`                        | `feat: support RENAME TABLE`               | minor (`0.1.0` → `0.2.0`) |
+| `feat!:` or `BREAKING CHANGE:` | `feat!: drop MySQL 5.7 support`            | major (`0.1.0` → `1.0.0`) |
+| `docs:`, `chore:`, `test:`     | `docs: improve pattern reference`          | none (no release)         |
+
+### Pinning the action
+
+| Pin       | What you get                                              | Recommended for                 |
+| --------- | --------------------------------------------------------- | ------------------------------- |
+| `@v1`     | Latest v1.x.x — gets new features and fixes automatically | Most teams                      |
+| `@latest` | Absolute latest release across all major versions         | Living on the edge              |
+| `@v1.2.3` | Exact immutable version                                   | Compliance / audit requirements |
+
+### Files managed by release-please
+
+| File                            | Purpose                                  |
+| ------------------------------- | ---------------------------------------- |
+| `version.txt`                   | Source of truth for current version      |
+| `CHANGELOG.md`                  | Auto-generated from conventional commits |
+| `.release-please-manifest.json` | release-please internal version tracking |
+| `release-please-config.json`    | release-please configuration             |
+
+---
+
 ## License
 
 MIT

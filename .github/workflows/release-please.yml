@@ -1,0 +1,64 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.release_created }}
+
+      - name: Update channel tags
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.tag_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Extract major version (v1.2.3 → v1)
+          MAJOR_TAG="v$(echo "${VERSION}" | sed 's/^v//' | cut -d. -f1)"
+
+          # Move the major version tag (e.g. v1) — this is what consumers pin to
+          git tag -fa "${MAJOR_TAG}" -m "${MAJOR_TAG}: ${VERSION}"
+          git push origin "${MAJOR_TAG}" --force
+
+          # Move the `latest` channel tag
+          git tag -fa latest -m "latest: ${VERSION}"
+          git push origin latest --force
+
+          # Replace release-please notes with GitHub-generated format (What's Changed + New Contributors)
+          generated=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            --method POST \
+            --field tag_name="${VERSION}" \
+            --jq '.body')
+          gh release edit "${VERSION}" --notes "${generated}"
+
+          # Update the major version channel release (e.g. v1)
+          gh release delete "${MAJOR_TAG}" --yes 2>/dev/null || true
+          gh release create "${MAJOR_TAG}" \
+            --title "${MAJOR_TAG}" \
+            --prerelease \
+            --notes "Channel pointer tag — tracks the latest ${MAJOR_TAG}.x.x release. Currently points to ${VERSION}."
+
+          # Update the `latest` channel release
+          gh release delete latest --yes 2>/dev/null || true
+          gh release create latest \
+            --title "latest" \
+            --prerelease \
+            --notes "Channel pointer tag — tracks the most recent release. Currently points to ${VERSION}."
