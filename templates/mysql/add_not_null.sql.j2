@@ -1,0 +1,18 @@
+-- Nullify any NULLs before enforcing NOT NULL
+UPDATE {{ table }} SET {{ column }} = '' WHERE {{ column }} IS NULL;
+
+SET @is_nullable = (
+    SELECT IS_NULLABLE
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+    AND table_name = '{{ table }}'
+    AND column_name = '{{ column }}'
+);
+
+SET @query = IF(@is_nullable = 'YES',
+    '{{ raw | replace("'", "\\'") }}',
+    'SELECT "Column {{ column }} is already NOT NULL" AS msg');
+
+PREPARE stmt FROM @query;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

@@ -1,0 +1,25 @@
+name: Flyway Idempotent Guardian
+
+on:
+  pull_request:
+    paths:
+      - "migrations/**/*.sql"
+
+jobs:
+  guardian:
+    name: Check SQL Idempotency
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # needed to create the fix branch + commit
+      pull-requests: write  # needed to post comments and open the fixing PR
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run flyway-idempotent-guardian
+        uses: postman-eng/flyway-idempotent-guardian@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dialect: auto          # auto-detect from file headers or SQL syntax
+          migration-path: "migrations/**/*.sql"
+          auto-pr: "true"        # open a fixing PR automatically

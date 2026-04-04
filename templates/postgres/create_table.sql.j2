@@ -1,0 +1,10 @@
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM pg_tables
+        WHERE schemaname = '{{ schema }}'
+        AND tablename = '{{ table }}'
+    ) THEN
+        {{ raw | indent(8) }};
+    END IF;
+END $$;

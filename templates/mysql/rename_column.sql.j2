@@ -1,0 +1,23 @@
+SET @old_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+    AND table_name = '{{ table }}'
+    AND column_name = '{{ column }}'
+);
+
+SET @new_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+    AND table_name = '{{ table }}'
+    AND column_name = '{{ new_column }}'
+);
+
+SET @query = IF(@old_exists > 0 AND @new_exists = 0,
+    '{{ raw | replace("'", "\\'") }}',
+    'SELECT "Column rename not needed" AS msg');
+
+PREPARE stmt FROM @query;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

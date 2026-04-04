@@ -1,0 +1,33 @@
+name: Flyway Idempotent Guardian
+description: Detects non-idempotent SQL migrations in PRs and suggests/opens a fixing PR with properly wrapped DDL.
+author: postman-eng
+
+inputs:
+  github-token:
+    description: GitHub token for API access and PR creation
+    required: true
+  dialect:
+    description: Database dialect — postgres, mysql, or auto (detect from file)
+    required: false
+    default: auto
+  migration-path:
+    description: Glob pattern for migration files relative to repo root
+    required: false
+    default: "**/V*__*.sql"
+  auto-pr:
+    description: Whether to open a fixing PR in addition to posting a comment
+    required: false
+    default: "true"
+
+runs:
+  using: docker
+  image: Dockerfile
+  env:
+    GITHUB_TOKEN: ${{ inputs.github-token }}
+    INPUT_DIALECT: ${{ inputs.dialect }}
+    INPUT_MIGRATION_PATH: ${{ inputs.migration-path }}
+    INPUT_AUTO_PR: ${{ inputs.auto-pr }}
+
+branding:
+  icon: shield
+  color: blue

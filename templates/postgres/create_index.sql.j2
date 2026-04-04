@@ -1,0 +1,11 @@
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM pg_indexes
+        WHERE schemaname = '{{ schema }}'
+        AND tablename = '{{ table }}'
+        AND indexname = '{{ index }}'
+    ) THEN
+        {{ raw | indent(8) }};
+    END IF;
+END $$;

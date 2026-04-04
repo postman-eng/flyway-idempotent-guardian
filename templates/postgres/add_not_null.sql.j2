@@ -1,0 +1,14 @@
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT FROM information_schema.columns
+        WHERE table_schema = '{{ schema }}'
+        AND table_name = '{{ table }}'
+        AND column_name = '{{ column }}'
+        AND is_nullable = 'YES'
+    ) THEN
+        -- Nullify any NULLs before enforcing NOT NULL
+        UPDATE {{ schema }}.{{ table }} SET {{ column }} = DEFAULT WHERE {{ column }} IS NULL;
+        {{ raw | indent(8) }};
+    END IF;
+END $$;

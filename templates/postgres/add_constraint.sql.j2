@@ -1,0 +1,12 @@
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM information_schema.table_constraints
+        WHERE constraint_schema = '{{ schema }}'
+        AND table_name = '{{ table }}'
+        AND constraint_name = '{{ constraint }}'
+        AND constraint_type = '{{ constraint_type }}'
+    ) THEN
+        {{ raw | indent(8) }};
+    END IF;
+END $$;

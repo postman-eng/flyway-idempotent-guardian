@@ -1,0 +1,16 @@
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT FROM information_schema.columns
+        WHERE table_schema = '{{ schema }}'
+        AND table_name = '{{ table }}'
+        AND column_name = '{{ column }}'
+    ) AND NOT EXISTS (
+        SELECT FROM information_schema.columns
+        WHERE table_schema = '{{ schema }}'
+        AND table_name = '{{ table }}'
+        AND column_name = '{{ new_column }}'
+    ) THEN
+        {{ raw | indent(8) }};
+    END IF;
+END $$;

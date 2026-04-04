@@ -1,0 +1,6 @@
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{{ type_name }}') THEN
+        {{ raw | indent(8) }};
+    END IF;
+END $$;

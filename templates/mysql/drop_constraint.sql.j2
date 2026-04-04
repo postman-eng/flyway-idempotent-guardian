@@ -1,0 +1,15 @@
+SET @constraint_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.table_constraints
+    WHERE constraint_schema = DATABASE()
+    AND table_name = '{{ table }}'
+    AND constraint_name = '{{ constraint }}'
+);
+
+SET @query = IF(@constraint_exists > 0,
+    '{{ raw | replace("'", "\\'") }}',
+    'SELECT "Constraint {{ constraint }} does not exist" AS msg');
+
+PREPARE stmt FROM @query;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
