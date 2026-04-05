@@ -64,9 +64,9 @@ _DDL_META: dict[DdlType, tuple[str, str, str | None]] = {
     ),
     DdlType.DROP_TABLE: (
         "DROP TABLE",
-        "Wraps DROP TABLE with IF EXISTS. CASCADE is added to drop all dependent objects.",
-        "DESTRUCTIVE: permanently deletes the table, all data, and every dependent object "
-        "(views, foreign keys, sequences). Verify this is intentional before merging.",
+        "Wraps DROP TABLE with IF EXISTS — skips silently if the table is already gone.",
+        "DESTRUCTIVE: permanently deletes the table and all data. "
+        "Dependent-object handling varies by dialect and rendered SQL; verify this is intentional before merging.",
     ),
     DdlType.CREATE_TYPE: (
         "CREATE TYPE",
@@ -75,9 +75,9 @@ _DDL_META: dict[DdlType, tuple[str, str, str | None]] = {
     ),
     DdlType.ADD_NOT_NULL: (
         "SET NOT NULL",
-        "Wraps SET NOT NULL with a nullability check. Existing NULLs are coerced to DEFAULT before the constraint is applied.",
-        "DATA CHANGE: any NULL values in this column will be set to DEFAULT. "
-        "Verify the column default is correct before merging.",
+        "Wraps SET NOT NULL with a nullability check. Existing NULLs may be rewritten to a non-NULL value before the constraint is applied, depending on dialect.",
+        "DATA CHANGE: any NULL values in this column may be rewritten before NOT NULL is enforced. "
+        "Verify the generated SQL and resulting replacement value for your dialect before merging.",
     ),
     DdlType.RENAME_COLUMN: (
         "RENAME COLUMN",
@@ -157,7 +157,7 @@ _CONSTRAINT_TYPE_MAP = {
 }
 
 
-def wrap(result: DetectionResult, pr_author: str = "", pr_url: str = "") -> str:
+def wrap(result: DetectionResult, pr_author: str = "unknown", pr_url: str = "") -> str:
     """
     Return idempotent SQL for the given DetectionResult.
     Returns the original SQL unchanged if it is already idempotent or unknown.
