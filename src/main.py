@@ -60,7 +60,7 @@ def main() -> None:
             print(f"  -> Already idempotent, skipping.")
             continue
 
-        fixed_sql = wrap(result)
+        fixed_sql = wrap(result, pr_author=pr.user.login, pr_url=pr.html_url)
         if fixed_sql == original_sql:
             print(f"  -> Wrapper produced no change (unknown type), skipping.")
             continue

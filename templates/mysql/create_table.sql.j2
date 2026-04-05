@@ -1,1 +1,2 @@
+{% include '_header.sql.j2' %}
 {{ raw | replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1) }};

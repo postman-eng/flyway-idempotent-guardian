@@ -1,3 +1,4 @@
+{% include '_header.sql.j2' %}
 -- Nullify any NULLs before enforcing NOT NULL
 UPDATE {{ table }} SET {{ column }} = '' WHERE {{ column }} IS NULL;
 
