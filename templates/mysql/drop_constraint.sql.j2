@@ -1,3 +1,4 @@
+{% include '_header.sql.j2' %}
 SET @constraint_exists = (
     SELECT COUNT(*)
     FROM information_schema.table_constraints

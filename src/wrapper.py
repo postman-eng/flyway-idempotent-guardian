@@ -3,7 +3,7 @@ Generates idempotent SQL by rendering Jinja2 templates with extracted DDL contex
 """
 from __future__ import annotations
 
-import os
+import re
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
@@ -12,10 +12,115 @@ from sql_detector import DetectionResult, DdlType
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
+_GUARDIAN_URL = "https://github.com/postman-eng/flyway-idempotent-guardian"
+
+# (op_name, description, warning|None)
+_DDL_META: dict[DdlType, tuple[str, str, str | None]] = {
+    DdlType.CREATE_TABLE: (
+        "CREATE TABLE",
+        "Wraps CREATE TABLE with IF NOT EXISTS — skips silently if the table already exists.",
+        None,
+    ),
+    DdlType.ADD_COLUMN: (
+        "ADD COLUMN",
+        "Wraps ADD COLUMN with an existence check — skips silently if the column is already present.",
+        None,
+    ),
+    DdlType.ALTER_COLUMN_TYPE: (
+        "ALTER COLUMN TYPE",
+        "Wraps ALTER COLUMN TYPE with an existence check — skips if the column is missing.",
+        None,
+    ),
+    DdlType.CREATE_INDEX: (
+        "CREATE INDEX",
+        "Wraps CREATE INDEX with IF NOT EXISTS — skips silently if the index already exists.",
+        None,
+    ),
+    DdlType.CREATE_UNIQUE_INDEX: (
+        "CREATE UNIQUE INDEX",
+        "Wraps CREATE UNIQUE INDEX with IF NOT EXISTS — skips silently if the index already exists.",
+        None,
+    ),
+    DdlType.ADD_FK: (
+        "ADD FOREIGN KEY",
+        "Wraps ADD FOREIGN KEY with a constraint existence check — skips if already present.",
+        None,
+    ),
+    DdlType.ADD_UNIQUE: (
+        "ADD UNIQUE CONSTRAINT",
+        "Wraps ADD UNIQUE with a constraint existence check — skips if already present.",
+        None,
+    ),
+    DdlType.ADD_CHECK: (
+        "ADD CHECK CONSTRAINT",
+        "Wraps ADD CHECK with a constraint existence check — skips if already present.",
+        None,
+    ),
+    DdlType.DROP_COLUMN: (
+        "DROP COLUMN",
+        "Wraps DROP COLUMN with an existence check — skips if the column is already gone.",
+        "DESTRUCTIVE: permanently removes the column and its data. Cannot be undone without a restore.",
+    ),
+    DdlType.DROP_TABLE: (
+        "DROP TABLE",
+        "Wraps DROP TABLE with IF EXISTS — skips silently if the table is already gone.",
+        "DESTRUCTIVE: permanently deletes the table and all data. "
+        "Dependent-object handling varies by dialect and rendered SQL; verify this is intentional before merging.",
+    ),
+    DdlType.CREATE_TYPE: (
+        "CREATE TYPE",
+        "Wraps CREATE TYPE with an existence check — skips silently if the type is already defined.",
+        None,
+    ),
+    DdlType.ADD_NOT_NULL: (
+        "SET NOT NULL",
+        "Wraps SET NOT NULL with a nullability check. Existing NULLs may be rewritten to a non-NULL value before the constraint is applied, depending on dialect.",
+        "DATA CHANGE: any NULL values in this column may be rewritten before NOT NULL is enforced. "
+        "Verify the generated SQL and resulting replacement value for your dialect before merging.",
+    ),
+    DdlType.RENAME_COLUMN: (
+        "RENAME COLUMN",
+        "Wraps RENAME COLUMN with checks on both old and new names — skips if already renamed or source is missing.",
+        None,
+    ),
+    DdlType.DROP_CONSTRAINT: (
+        "DROP CONSTRAINT",
+        "Wraps DROP CONSTRAINT with an existence check — skips if the constraint is already gone.",
+        None,
+    ),
+    DdlType.CREATE_VIEW: (
+        "CREATE VIEW",
+        "Rewrites CREATE VIEW as CREATE OR REPLACE VIEW — safe to re-run without dropping first.",
+        None,
+    ),
+    DdlType.CREATE_FUNCTION: (
+        "CREATE FUNCTION",
+        "Rewrites CREATE FUNCTION as CREATE OR REPLACE FUNCTION — safe to re-run without dropping first.",
+        None,
+    ),
+}
+
 
 def _env(dialect: str) -> Environment:
-    loader = FileSystemLoader(str(_TEMPLATES_DIR / dialect))
+    loader = FileSystemLoader([
+        str(_TEMPLATES_DIR / dialect),
+        str(_TEMPLATES_DIR / "shared"),
+    ])
     return Environment(loader=loader, trim_blocks=True, lstrip_blocks=True)
+
+
+def _render_header(ddl_type: DdlType, dialect: str, pr_author: str, pr_url: str) -> str:
+    """Render _header.sql.j2 for non-template code paths (CREATE VIEW/FUNCTION)."""
+    op_name, description, warning = _DDL_META.get(ddl_type, ("UNKNOWN", "", None))
+    ctx = {
+        "guardian_url": _GUARDIAN_URL,
+        "op_name": op_name,
+        "description": description,
+        "warning": warning,
+        "pr_author": pr_author,
+        "pr_url": pr_url,
+    }
+    return _env(dialect).get_template("_header.sql.j2").render(**ctx)
 
 
 _DDL_TEMPLATE_MAP: dict[DdlType, str] = {
@@ -44,7 +149,7 @@ _CONSTRAINT_TYPE_MAP = {
 }
 
 
-def wrap(result: DetectionResult) -> str:
+def wrap(result: DetectionResult, pr_author: str = "unknown", pr_url: str = "") -> str:
     """
     Return idempotent SQL for the given DetectionResult.
     Returns the original SQL unchanged if it is already idempotent or unknown.
@@ -61,15 +166,17 @@ def wrap(result: DetectionResult) -> str:
 
     template_name = _DDL_TEMPLATE_MAP.get(result.ddl_type)
 
-    # Views/functions: rewrite to use CREATE OR REPLACE
+    # Views/functions: rewrite to use CREATE OR REPLACE (no template)
     if result.ddl_type == DdlType.CREATE_VIEW:
-        return re.sub(
+        rewritten = re.sub(
             r"CREATE\s+VIEW", "CREATE OR REPLACE VIEW", result.raw, count=1, flags=re.IGNORECASE
         )
+        return _render_header(result.ddl_type, result.dialect, pr_author, pr_url) + rewritten
     if result.ddl_type == DdlType.CREATE_FUNCTION:
-        return re.sub(
+        rewritten = re.sub(
             r"CREATE\s+FUNCTION", "CREATE OR REPLACE FUNCTION", result.raw, count=1, flags=re.IGNORECASE
         )
+        return _render_header(result.ddl_type, result.dialect, pr_author, pr_url) + rewritten
 
     if template_name is None:
         return (
@@ -86,6 +193,7 @@ def wrap(result: DetectionResult) -> str:
             f"-- Manual review required.\n{result.raw}"
         )
 
+    op_name, description, warning = _DDL_META.get(result.ddl_type, ("UNKNOWN", "", None))
     ctx = {
         "schema": result.schema or "public",
         "table": result.table or "unknown_table",
@@ -97,10 +205,13 @@ def wrap(result: DetectionResult) -> str:
         "raw": result.raw,
         "unique": result.ddl_type == DdlType.CREATE_UNIQUE_INDEX,
         "constraint_type": _CONSTRAINT_TYPE_MAP.get(result.ddl_type, ""),
+        # Header variables
+        "guardian_url": _GUARDIAN_URL,
+        "op_name": op_name,
+        "description": description,
+        "warning": warning,
+        "pr_author": pr_author,
+        "pr_url": pr_url,
     }
 
     return template.render(**ctx).strip()
-
-
-# Needed for the CREATE OR REPLACE rewrites above
-import re  # noqa: E402 (imported after use in module body — moved here to avoid circular)
